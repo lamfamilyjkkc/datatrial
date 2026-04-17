@@ -2,103 +2,188 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>Data Bridge</title>
+    <title>Colin's EHS Data Bridge (Enhanced)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 1000px; margin: auto; }
-        #drop-zone { border: 2px dashed #007bff; padding: 30px; text-align: center; color: #007bff; cursor: pointer; margin-bottom: 20px; border-radius: 10px; }
-        textarea { width: 100%; border: 1px solid #ddd; border-radius: 5px; padding: 10px; margin-bottom: 10px; box-sizing: border-box; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-        th, td { border: 1px solid #eee; padding: 8px; text-align: center; }
-        input { width: 95%; border: 1px solid transparent; text-align: center; }
-        .btn { padding: 10px 20px; cursor: pointer; border-radius: 5px; border: none; font-weight: bold; margin: 5px; }
-        .btn-primary { background: #007bff; color: white; }
-        .btn-success { background: #28a745; color: white; width: 100%; margin-top: 20px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f7f9; padding: 20px; color: #333; }
+        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); max-width: 1100px; margin: auto; }
+        h2 { color: #0056b3; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        #drop-zone { border: 3px dashed #007bff; padding: 40px; text-align: center; color: #007bff; cursor: pointer; margin-bottom: 20px; border-radius: 12px; background: #f8fbff; transition: 0.3s; }
+        #drop-zone:hover { background: #eef5ff; border-color: #0056b3; }
+        textarea { width: 100%; border: 1px solid #ccc; border-radius: 8px; padding: 12px; margin-bottom: 15px; font-family: monospace; font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 25px; background: white; }
+        th { background: #007bff; color: white; padding: 12px; font-size: 13px; }
+        td { border: 1px solid #dee2e6; padding: 10px; text-align: center; }
+        input { width: 90%; border: 1px solid transparent; text-align: center; font-size: 14px; padding: 5px; }
+        input:focus { border-bottom: 1px solid #007bff; outline: none; background: #fff9e6; }
+        .btn { padding: 12px 25px; cursor: pointer; border-radius: 8px; border: none; font-weight: bold; transition: 0.2s; }
+        .btn-primary { background: #007bff; color: white; margin-bottom: 10px; }
+        .btn-success { background: #28a745; color: white; width: 100%; font-size: 18px; margin-top: 30px; }
+        .btn:hover { opacity: 0.8; transform: translateY(-1px); }
+        .status-bar { padding: 10px; border-radius: 5px; background: #e9ecef; margin: 10px 0; font-weight: bold; }
     </style>
 </head>
 <body>
+
 <div class="card">
-    <h2>EHS 數據轉運站 (Lam Family)</h2>
-    <div id="drop-zone">📸 模式 2：私人電腦拖放相片到此</div>
-    <input type="file" id="file-input" style="display:none">
-    <textarea id="raw-input" rows="4" placeholder="模式 1：貼上手機辨識到嘅文字雜訊..."></textarea>
-    <button class="btn btn-primary" onclick="processRawText()">✨ 過濾並分行 (11個數/行)</button>
-    <div id="status" style="margin:10px 0; color: #666;">等待輸入...</div>
+    <h2>🚀 Colin's EHS 數據強力轉運站</h2>
+    
+    <div id="drop-zone">📸 模式 2：直接拖放手機影嘅數據相到此 (自動過濾雜訊)</div>
+    <input type="file" id="file-input" style="display:none" accept="image/*">
+    
+    <textarea id="raw-input" rows="5" placeholder="模式 1：OCR 辨識結果會喺呢度出現..."></textarea>
+    
+    <button class="btn btn-primary" onclick="processRawText()">🔍 手動重新分析文字</button>
+    
+    <div id="status" class="status-bar">就緒：請拖放相片...</div>
+
     <table id="data-table">
         <thead>
-            <tr id="header-row">
-                <th>Action</th><th>Date</th><th>Time</th>
+            <tr>
+                <th>操作</th><th>日期</th><th>時間</th>
                 <th>TX2</th><th>TX3</th><th>TX4</th><th>TX5</th><th>TX6</th>
                 <th>TX7</th><th>TX8</th><th>TX9</th><th>TX10</th><th>TX11</th><th>TX12</th>
             </tr>
         </thead>
-        <tbody id="data-body"></tbody>
+        <tbody id="data-body">
+            </tbody>
     </table>
-    <button class="btn btn-success" onclick="saveToGist()">💾 Save to Cloud (同步至雲端)</button>
+
+    <button class="btn btn-success" onclick="saveToGist()">💾 同步至雲端 Gist (返公司即睇)</button>
 </div>
+
 <script>
     const GIST_ID = localStorage.getItem('ehs_gist_id');
     const GITHUB_TOKEN = localStorage.getItem('ehs_token');
-    const dz = document.getElementById('drop-zone');
-    dz.onclick = () => document.getElementById('file-input').click();
-    document.getElementById('file-input').onchange = async (e) => {
-        document.getElementById('status').innerText = "OCR 辨識中... 請稍候";
-        const { data: { text } } = await Tesseract.recognize(e.target.files[0], 'eng');
-        document.getElementById('raw-input').value = text;
-        processRawText();
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const status = document.getElementById('status');
+
+    dropZone.onclick = () => fileInput.click();
+
+    fileInput.onchange = async (e) => {
+        if (!e.target.files[0]) return;
+        status.innerText = "⏳ 辨識中... 手機相片雜訊較多，請等 5-10 秒...";
+        status.style.color = "blue";
+        
+        try {
+            const { data: { text } } = await Tesseract.recognize(e.target.files[0], 'eng');
+            document.getElementById('raw-input').value = text;
+            processRawText();
+        } catch (err) {
+            status.innerText = "❌ 辨識失敗，請重新整理網頁再試。";
+        }
     };
+
     function processRawText() {
         const rawText = document.getElementById('raw-input').value;
+        
+        // 強力正則表達式：只捉符合 xx,xxx.xx 格式嘅數字，無視英文字
         const pattern = /\d{1,3}(,\d{3})*(\.\d{2})/g;
-        const matches = rawText.match(pattern) || [];
+        let matches = rawText.match(pattern) || [];
+        
+        // 抹除重複同埋唔合理嘅細數（例如版權年份 2026.00 之類）
+        // 我哋假設 EHS 數據都係大數
         const dataBody = document.getElementById('data-body');
         dataBody.innerHTML = ""; 
+
+        // 每 11 個數字為一組
         for (let i = 0; i < matches.length; i += 11) {
             const rowData = matches.slice(i, i + 11);
             if (rowData.length < 11) continue; 
+
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td><button class="btn-primary" onclick="copyRow(this)">📋 Copy</button></td>
-                            <td><input type="text" value="${new Date().toLocaleDateString()}"></td>
-                            <td><input type="text" value="11:00 AM"></td>`;
-            rowData.forEach(val => { tr.innerHTML += `<td><input type="text" value="${val}"></td>`; });
+            tr.innerHTML = `
+                <td><button class="btn-primary" style="padding:5px 10px;" onclick="copyRow(this)">📋 Copy</button></td>
+                <td><input type="text" value="${new Date().toLocaleDateString('en-GB')}"></td>
+                <td><input type="text" value="11:00 AM"></td>
+                ${rowData.map(val => `<td><input type="text" value="${val}"></td>`).join('')}
+            `;
             dataBody.appendChild(tr);
         }
-        document.getElementById('status').innerText = `搵到 ${Math.floor(matches.length/11)} 日數據。`;
+
+        if (matches.length >= 11) {
+            status.innerText = `✅ 成功！搵到 ${Math.floor(matches.length/11)} 組數據。`;
+            status.style.color = "green";
+        } else {
+            status.innerText = `⚠️ 警告：只搵到 ${matches.length} 個數字，唔夠 11 個。請確保影到數據全景。`;
+            status.style.color = "orange";
+        }
     }
+
     function copyRow(btn) {
         const row = btn.parentElement.parentElement;
         const inputs = Array.from(row.querySelectorAll('input'));
         const text = inputs.map(i => i.value).join('\t');
         navigator.clipboard.writeText(text);
-        btn.innerText = "✅ Copied";
+        btn.innerText = "✅ OK";
         setTimeout(() => btn.innerText = "📋 Copy", 2000);
     }
+
     async function saveToGist() {
         const rows = Array.from(document.querySelectorAll('#data-body tr'));
-        const allData = rows.map(tr => Array.from(tr.querySelectorAll('input')).map(i => i.value).join('\t')).join('\n');
-        if (!GIST_ID || !GITHUB_TOKEN) return alert("請先設置 Token 同 Gist ID (喺 Console 行 localStorage.setItem)");
-        const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-            method: 'PATCH',
-            headers: { 'Authorization': `token ${GITHUB_TOKEN}` },
-            body: JSON.stringify({ files: { "daily_ehs.txt": { content: allData } } })
-        });
-        if (res.ok) alert("✅ 同步成功！返公司開網頁就見到。");
-    }
-    window.onload = async () => {
-        if (GIST_ID) {
-            const res = await fetch(`https://api.github.com/gists/${GIST_ID}`);
+        if (rows.length === 0) return alert("無數據可以儲存！");
+        
+        const allData = rows.map(tr => 
+            Array.from(tr.querySelectorAll('input')).map(i => i.value).join('\t')
+        ).join('\n');
+
+        if (!GIST_ID || !GITHUB_TOKEN) {
+            return alert("請先設置 Token 同 Gist ID！");
+        }
+
+        status.innerText = "☁️ 正在同步到雲端...";
+        
+        try {
+            const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `token ${GITHUB_TOKEN}` },
+                body: JSON.stringify({
+                    files: { "daily_ehs.txt": { content: allData } }
+                })
+            });
+
             if (res.ok) {
-                const gist = await res.json();
-                const content = gist.files["daily_ehs.txt"].content;
-                if (content !== "0" && content !== "ready") {
-                    document.getElementById('raw-input').value = content.replace(/\t/g, ' ');
-                    processRawText();
-                    document.getElementById('status').innerText = "已加載雲端最新數據。";
-                }
+                status.innerText = "✅ 同步成功！返到公司電腦開返呢頁就見到。";
+                alert("數據已鎖定到雲端！");
+            } else {
+                alert("同步失敗，請檢查 Token 是否過期。");
             }
+        } catch (err) {
+            alert("網絡錯誤，無法連接 GitHub。");
+        }
+    }
+
+    // 網頁開啟時自動讀取雲端舊數據
+    window.onload = async () => {
+        if (GIST_ID && GITHUB_TOKEN) {
+            try {
+                const res = await fetch(`https://api.github.com/gists/${GIST_ID}`);
+                if (res.ok) {
+                    const gist = await res.json();
+                    const content = gist.files["daily_ehs.txt"].content;
+                    if (content && content !== "0" && content !== "ready") {
+                        status.innerText = "📂 已加載雲端最新數據。";
+                        // 簡單解析返出嚟顯示
+                        const lines = content.split('\n');
+                        const dataBody = document.getElementById('data-body');
+                        lines.forEach(line => {
+                            const cells = line.split('\t');
+                            if (cells.length >= 13) {
+                                const tr = document.createElement('tr');
+                                tr.innerHTML = `
+                                    <td><button class="btn-primary" style="padding:5px 10px;" onclick="copyRow(this)">📋 Copy</button></td>
+                                    ${cells.map(c => `<td><input type="text" value="${c}"></td>`).join('')}
+                                `;
+                                dataBody.appendChild(tr);
+                            }
+                        });
+                    }
+                }
+            } catch (e) { console.log("首次加載跳過"); }
         }
     };
 </script>
+
 </body>
 </html>
