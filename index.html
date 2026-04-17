@@ -3,119 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EHS AI Integration Terminal</title>
+    <title>EHS OCR Pro v4.0</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        body { font-family: -apple-system, system-ui, sans-serif; background: #f0f2f5; padding: 15px; color: #333; }
-        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        h2 { border-left: 5px solid #007bff; padding-left: 10px; font-size: 1.1rem; margin-bottom: 20px; }
-        
-        /* 轉換區樣式 - 公司機用 */
-        .converter-box { background: #fff9e6; padding: 15px; border-radius: 8px; border: 1px solid #ffeeba; margin-bottom: 30px; }
-        #input-bridge { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 1rem; box-sizing: border-box; }
-        
-        /* 表格樣式 - 確保貼入 Excel 唔會變一格 */
-        .data-table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; }
-        .data-table th { background: #6c757d; color: white; border: 1px solid #dee2e6; padding: 8px; font-size: 11px; }
-        .data-table td { border: 1px solid #dee2e6; padding: 12px; text-align: center; color: #222; font-weight: bold; font-size: 14px; }
-
-        /* OCR 區樣式 - 手機用 */
-        .ocr-section { margin-top: 40px; border-top: 2px dashed #eee; padding-top: 20px; }
-        #drop-zone { border: 2px dashed #007bff; padding: 30px; text-align: center; cursor: pointer; color: #007bff; background: #f0f7ff; border-radius: 8px; }
-        #status { font-size: 0.9rem; margin: 10px 0; font-weight: bold; }
-        #raw-output { width: 100%; height: 60px; margin-top: 10px; font-size: 10px; color: #999; border: 1px solid #eee; }
+        body { font-family: sans-serif; background: #121212; color: #e0e0e0; padding: 15px; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #333; }
+        #drop-zone { border: 2px dashed #007bff; padding: 40px 10px; text-align: center; border-radius: 10px; color: #569cd6; background: #1a2633; cursor: pointer; }
+        .data-list { list-style: none; padding: 0; }
+        .data-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #333; font-family: monospace; }
+        .tx-label { color: #888; }
+        .tx-value { color: #00ff00; font-weight: bold; font-size: 1.1rem; }
+        .btn { width: 100%; padding: 15px; background: #007bff; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn-secondary { background: #444; margin-top: 5px; }
+        #status { text-align: center; margin: 10px 0; font-size: 0.9rem; color: #ffa500; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>EHS Data Integration Terminal</h2>
+<div class="card">
+    <div id="drop-zone">📸 影相 / 揀選承包商截圖</div>
+    <input type="file" id="file-input" style="display:none" accept="image/*">
+    <div id="status">Ready</div>
+</div>
 
-    <div class="converter-box">
-        <p style="margin: 0 0 10px 0; font-weight: bold; font-size: 0.9rem;">1. Paste numbers from QuickNote here:</p>
-        <input type="text" id="input-bridge" placeholder="貼上數字..." oninput="convertToTable()">
-        
-        <p style="margin: 15px 0 10px 0; font-weight: bold; font-size: 0.9rem;">2. Drag select the table & Copy to Excel:</p>
-        <div style="overflow-x: auto;">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>TX2</th><th>TX3</th><th>TX4</th><th>TX5</th><th>TX6</th>
-                        <th>TX7</th><th>TX8</th><th>TX9</th><th>TX10</th><th>TX11</th><th>TX12</th>
-                    </tr>
-                </thead>
-                <tbody id="table-body">
-                    <tr><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
-                </tbody>
-            </table>
-        </div>
-        <p style="font-size: 0.75rem; color: #888; margin-top: 8px;">(提示：用 Mouse 掃過上面 11 格數字，然後 Ctrl+C)</p>
-    </div>
-
-    <div class="ocr-section">
-        <p style="font-weight: bold; font-size: 0.9rem; color: #666;">[ Mobile OCR Tool ]</p>
-        <div id="drop-zone">Tap here to upload / take photo</div>
-        <input type="file" id="file-input" style="display:none" accept="image/*">
-        <div id="status">Ready</div>
-        <textarea id="raw-output" readonly placeholder="OCR result stream..."></textarea>
-    </div>
+<div id="result-area" class="card" style="display:none;">
+    <h3 style="margin-top:0;">辨識結果 (垂直排列)</h3>
+    <div id="row-info" style="font-size: 0.8rem; color: #aaa; margin-bottom: 10px;"></div>
+    <div id="data-items" class="data-list"></div>
+    <button class="btn" onclick="copyVertical()">一鍵複製 (垂直方便 Transpose)</button>
+    <button class="btn btn-secondary" onclick="window.location.reload()">重新影相</button>
 </div>
 
 <script>
-    const tableBody = document.getElementById('table-body');
-    const inputBridge = document.getElementById('input-bridge');
-
-    // 格式轉換：空格變表格
-    function convertToTable() {
-        const val = inputBridge.value.trim();
-        const numbers = val.split(/\s+/); // 分割空格或 Tab
-        
-        if (numbers.length > 0) {
-            let rowHtml = '<tr>';
-            for (let i = 0; i < 11; i++) {
-                rowHtml += `<td>${numbers[i] || ''}</td>`;
-            }
-            rowHtml += '</tr>';
-            tableBody.innerHTML = rowHtml;
-        }
-    }
-
-    // OCR 邏輯
-    const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
+    const dropZone = document.getElementById('drop-zone');
     const status = document.getElementById('status');
+    const resultArea = document.getElementById('result-area');
+    const dataItems = document.getElementById('data-items');
 
     dropZone.onclick = () => fileInput.click();
 
     fileInput.onchange = async (e) => {
         if (!e.target.files[0]) return;
-        status.innerText = "⏳ Processing OCR...";
-        status.style.color = "blue";
+        status.innerText = "⚡ 正在優化圖像並辨識中...";
         
-        try {
-            const { data: { text } } = await Tesseract.recognize(e.target.files[0], 'eng');
-            document.getElementById('raw-output').value = text;
-            
-            const regex = /\d{1,3}(,\d{3})*(\.\d{2})|\d{5,15}/g;
-            let found = text.match(regex) || [];
-            let cleaned = found.filter(n => n.length > 4); 
+        // 使用 Tesseract 並增加參數提升準確度
+        const { data: { text } } = await Tesseract.recognize(e.target.files[0], 'eng', {
+            tessedit_char_whitelist: '0123456789., ' // 只准認數字同點，減少認錯英文字
+        });
 
-            if (cleaned.length >= 11) {
-                const finalStr = cleaned.slice(0, 11).join(' ');
-                status.innerText = "✅ Success! Copy the numbers below:";
-                status.style.color = "green";
-                // 自動將結果填入輸入框方便手機 Copy
-                inputBridge.value = finalStr;
-                inputBridge.select();
-                alert("Captured! \n\n" + finalStr);
-            } else {
-                status.innerText = `❓ Found only ${cleaned.length} numbers.`;
-                inputBridge.value = cleaned.join(' ');
-            }
-        } catch (err) {
-            status.innerText = "❌ Error: OCR failed.";
+        // Regex 優化：專門搵包含小數點或逗號嘅長數字
+        const regex = /\d{1,3}(,\d{3})*(\.\d{2})/g;
+        let found = text.match(regex) || [];
+        
+        // 過濾掉明顯唔係數據嘅細數字（例如日期 2026）
+        let cleaned = found.filter(n => n.length > 5);
+
+        if (cleaned.length >= 11) {
+            resultArea.style.display = 'block';
+            status.innerText = "✅ 辨識完成";
+            
+            // 處理多日數據邏輯：每 11 個數為一組
+            let totalRows = Math.ceil(cleaned.length / 11);
+            document.getElementById('row-info').innerText = `共發現 ${cleaned.length} 個數值 (約 ${totalRows} 日數據)。顯示首 11 個：`;
+            
+            window.currentNumbers = cleaned.slice(0, 11);
+            renderList(window.currentNumbers);
+        } else {
+            status.innerText = "❌ 辨識失敗。請確保相片清晰，或嘗試近影數字區域。";
+            console.log("Raw text:", text); // 方便 Debug
         }
     };
+
+    function renderList(nums) {
+        dataItems.innerHTML = '';
+        nums.forEach((num, index) => {
+            dataItems.innerHTML += `
+                <div class="data-item">
+                    <span class="tx-label">TX${index + 2}</span>
+                    <span class="tx-value">${num}</span>
+                </div>`;
+        });
+    }
+
+    function copyVertical() {
+        // 垂直複製，一行一個數
+        const text = window.currentNumbers.join('\n');
+        navigator.clipboard.writeText(text);
+        alert("已垂直複製！返到 Excel 用 Transpose 貼上即可。");
+    }
 </script>
 </body>
 </html>
