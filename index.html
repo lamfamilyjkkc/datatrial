@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Data Processor Tool v2.1</title>
+    <title>Data Processor Tool v2.2</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; color: #333; }
@@ -12,10 +12,10 @@
         #drop-zone:hover { background: #f1f1f1; border-color: #999; }
         textarea { width: 100%; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: monospace; font-size: 12px; background: #fff; margin-bottom: 10px; box-sizing: border-box; }
         .table-container { overflow-x: auto; margin-top: 15px; }
-        table { width: 100%; border-collapse: collapse; min-width: 1000px; }
+        table { width: 100%; border-collapse: collapse; min-width: 900px; }
         th { background: #666; color: white; padding: 8px; font-size: 11px; border: 1px solid #555; font-weight: bold; }
         td { border: 1px solid #ddd; padding: 6px; text-align: center; }
-        input { width: 90%; border: 1px solid transparent; text-align: center; font-size: 13px; padding: 4px; background: transparent; }
+        input { width: 92%; border: 1px solid transparent; text-align: center; font-size: 13px; padding: 4px; background: transparent; }
         input:focus { border: 1px solid #aaa; outline: none; background: #fff9e6; }
         .btn { padding: 8px 16px; cursor: pointer; border-radius: 4px; border: none; font-size: 13px; font-weight: bold; }
         .btn-main { background: #444; color: white; margin-right: 5px; }
@@ -39,7 +39,7 @@
     
     <div>
         <button class="btn btn-main" onclick="runAnalysis()">Run Analysis</button>
-        <button class="btn btn-alt" onclick="appendRow()">Add Row</button>
+        <button class="btn btn-alt" onclick="appendRow()">Add Row Manually</button>
     </div>
     
     <div class="table-container">
@@ -59,7 +59,6 @@
 </div>
 
 <script>
-    // System keys from localStorage
     const KEY_S = localStorage.getItem('ehs_gist_id');
     const KEY_T = localStorage.getItem('ehs_token');
     
@@ -76,12 +75,11 @@
             const { data: { text } } = await Tesseract.recognize(e.target.files[0], 'eng');
             document.getElementById('raw-output').value = text;
             runAnalysis();
-        } catch (err) { status.innerText = "Status: Error during OCR"; }
+        } catch (err) { status.innerText = "Status: Error"; }
     };
 
     function runAnalysis() {
         const text = document.getElementById('raw-output').value;
-        // Logic to extract financial-style numbers (xx,xxx.xx)
         const regex = /\d{1,3}(,\d{3})*(\.\d{2})/g;
         let found = text.match(regex) || [];
         
@@ -89,7 +87,6 @@
         target.innerHTML = ""; 
 
         if (found.length > 0) {
-            // Split data into rows of 11 columns
             for (let i = 0; i < found.length; i += 11) {
                 const tr = document.createElement('tr');
                 let chunk = found.slice(i, i + 11);
@@ -101,9 +98,7 @@
                 tr.innerHTML = html;
                 target.appendChild(tr);
             }
-            status.innerText = `Status: ${found.length} items parsed into ${Math.ceil(found.length/11)} row(s).`;
-        } else {
-            status.innerText = "Status: No valid data format found.";
+            status.innerText = `Status: ${found.length} items parsed.`;
         }
     }
 
@@ -119,9 +114,8 @@
         const row = btn.parentElement.parentElement;
         const vals = Array.from(row.querySelectorAll('input')).map(i => i.value);
         navigator.clipboard.writeText(vals.join('\t'));
-        const originalText = btn.innerText;
         btn.innerText = "Done";
-        setTimeout(() => btn.innerText = originalText, 2000);
+        setTimeout(() => btn.innerText = "Copy", 2000);
     }
 
     async function syncState() {
@@ -129,10 +123,7 @@
         if (rows.length === 0) return;
         const payload = rows.map(tr => Array.from(tr.querySelectorAll('input')).map(i => i.value).join('\t')).join('\n');
         
-        if (!KEY_S || !KEY_T) {
-            status.innerText = "Status: System keys missing";
-            return;
-        }
+        if (!KEY_S || !KEY_T) return alert("Keys missing.");
         
         status.innerText = "Status: Syncing...";
         try {
@@ -144,10 +135,8 @@
             if (res.ok) { 
                 status.innerText = "Status: Sync complete";
                 alert("Data state synchronized.");
-            } else {
-                status.innerText = "Status: Sync failed (HTTP Error)";
             }
-        } catch (e) { status.innerText = "Status: Sync failed (Network Error)"; }
+        } catch (e) { status.innerText = "Status: Sync failed"; }
     }
 
     window.onload = async () => {
@@ -160,18 +149,20 @@
                     if (content && content !== "0") {
                         content.split('\n').forEach(line => {
                             const cells = line.split('\t');
-                            const tr = document.createElement('tr');
-                            let html = `<td><button class="btn-main" style="padding:4px 8px;font-size:10px" onclick="copyRow(this)">Copy</button></td>`;
-                            cells.forEach(c => html += `<td><input type="text" value="${c}"></td>`);
-                            tr.innerHTML = html;
-                            document.getElementById('data-display').appendChild(tr);
+                            if (cells.length > 0) {
+                                const tr = document.createElement('tr');
+                                let html = `<td><button class="btn-main" style="padding:4px 8px;font-size:10px" onclick="copyRow(this)">Copy</button></td>`;
+                                for (let k = 0; k < 11; k++) {
+                                    html += `<td><input type="text" value="${cells[k] || ""}"></td>`;
+                                }
+                                tr.innerHTML = html;
+                                document.getElementById('data-display').appendChild(tr);
+                            }
                         });
                         status.innerText = "Status: Previous session restored";
                     }
                 }
-            } catch (e) {
-                status.innerText = "Status: Ready (No remote data)";
-            }
+            } catch (e) {}
         }
     };
 </script>
