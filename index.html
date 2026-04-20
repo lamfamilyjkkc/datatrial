@@ -1,138 +1,124 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-Hant">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meter OCR Pro v3</title>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-
-<style>
-body { font-family: Arial; padding:15px; max-width:600px; margin:auto;}
-button { width:100%; padding:14px; margin:8px 0; font-size:18px;}
-textarea { width:100%; height:180px; font-size:16px;}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EHS Data Integration v6.5</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        :root { --bg: #1a1a1a; --card: #2d2d2d; --text: #e0e0e0; --accent: #4caf50; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 15px; margin: 0; }
+        .card { background: var(--card); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #444; }
+        #drop-zone { border: 2px dashed #666; padding: 40px 10px; text-align: center; border-radius: 10px; cursor: pointer; color: #aaa; }
+        #drop-zone.active { border-color: var(--accent); color: var(--accent); }
+        .day-box { background: #333; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 5px solid var(--accent); }
+        .day-label { font-weight: bold; color: var(--accent); margin-bottom: 10px; display: block; }
+        .num-item { display: flex; justify-content: space-between; font-family: monospace; padding: 5px 0; border-bottom: 1px solid #444; }
+        .btn { width: 100%; padding: 15px; background: #007bff; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1rem; cursor: pointer; margin-top: 10px; }
+        .btn:active { opacity: 0.8; }
+        canvas { display: none; width: 100%; margin-top: 10px; border-radius: 5px; }
+        #status { font-size: 0.9rem; color: #ffa500; text-align: center; margin-top: 10px; }
+    </style>
 </head>
-
 <body>
 
-<h2>📱 Meter OCR Pro v3</h2>
+<div class="card">
+    <h2 style="margin:0 0 15px 0; font-size: 1.2rem;">EHS Meter OCR (Multi-Day)</h2>
+    <div id="drop-zone">📸 影相或上傳承包商截圖</div>
+    <input type="file" id="file-input" style="display:none" accept="image/*">
+    <canvas id="pre-canvas"></canvas>
+    <div id="status">準備就緒</div>
+</div>
 
-<input type="file" accept="image/*" capture="environment" id="imageInput">
-<div id="status">Waiting...</div>
-
-<button onclick="runOCR()">🚀 Run OCR</button>
-
-<textarea id="result"></textarea>
-
-<button onclick="copyTSV()">📋 Copy</button>
+<div id="results"></div>
 
 <script>
+    const fileInput = document.getElementById('file-input');
+    const dropZone = document.getElementById('drop-zone');
+    const status = document.getElementById('status');
+    const resultsDiv = document.getElementById('results');
+    const canvas = document.getElementById('pre-canvas');
+    const ctx = canvas.getContext('2d');
 
-let imageFile = null;
-document.getElementById('imageInput').onchange = e => imageFile = e.target.files[0];
+    dropZone.onclick = () => fileInput.click();
 
-async function runOCR(){
+    fileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-if(!imageFile){ alert("Select image"); return; }
+        status.innerText = "⏳ 正在處理影像...";
+        const reader = new FileReader();
+        reader.onload = (f) => {
+            const img = new Image();
+            img.onload = async () => {
+                // 預處理：黑白高對比
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.filter = 'grayscale(1) contrast(1.5) brightness(1.1)';
+                ctx.drawImage(img, 0, 0);
+                canvas.style.display = 'block';
 
-document.getElementById("status").innerText="Processing...";
+                status.innerText = "🤖 AI 辨識中 (請稍候)...";
+                
+                try {
+                    const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
+                        tessedit_char_whitelist: '0123456789., '
+                    });
+                    parseData(text);
+                } catch (err) {
+                    status.innerText = "❌ 辨識出錯";
+                }
+            };
+            img.src = f.target.result;
+        };
+        reader.readAsDataURL(file);
+    };
 
-const img = new Image();
-img.src = URL.createObjectURL(imageFile);
-await new Promise(r=>img.onload=r);
+    function parseData(text) {
+        // Regex 搵出所有帶有逗號或點嘅數字
+        const regex = /\d{1,3}(,\d{3})*(\.\d{2})/g;
+        let allNumbers = (text.match(regex) || []).filter(n => n.length > 5);
 
-// ===== CANVAS =====
-const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d");
+        if (allNumbers.length === 0) {
+            status.innerText = "❌ 搵唔到數據，請影近啲。";
+            return;
+        }
 
-// 🔥 放大 2x（關鍵）
-const scale = 2;
+        status.innerText = `✅ 成功辨識 ${allNumbers.length} 個數值`;
+        resultsDiv.innerHTML = '';
 
-canvas.width = img.width * scale;
-canvas.height = img.height * 0.6 * scale;
-
-// 🔥 裁切
-const cropTop = img.height * 0.2;
-
-ctx.drawImage(
-    img,
-    0, cropTop,
-    img.width, img.height * 0.6,
-    0, 0,
-    canvas.width, canvas.height
-);
-
-// ===== 影像強化 =====
-let imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
-let d = imgData.data;
-
-for(let i=0;i<d.length;i+=4){
-
-    // 灰階
-    let gray = (d[i]+d[i+1]+d[i+2])/3;
-
-    // 🔥 強對比
-    let v = gray > 140 ? 255 : 0;
-
-    // 🔥 銳化（簡單版）
-    if(v > 200){
-        d[i]=255; d[i+1]=255; d[i+2]=255;
-    } else {
-        d[i]=0; d[i+1]=0; d[i+2]=0;
+        // 11 個一組分組 (Day 1, Day 2, Day 3...)
+        for (let i = 0; i < allNumbers.length; i += 11) {
+            const group = allNumbers.slice(i, i + 11);
+            const dayIdx = Math.floor(i / 11) + 1;
+            createUI(group, dayIdx);
+        }
     }
-}
 
-ctx.putImageData(imgData,0,0);
+    function createUI(nums, dayIdx) {
+        const container = document.createElement('div');
+        container.className = 'card day-box';
+        
+        let listHtml = `<span class="day-label">第 ${dayIdx} 日數據 (TX2-TX12)</span>`;
+        nums.forEach((n, idx) => {
+            listHtml += `<div class="num-item"><span>TX${idx+2}</span><span style="color:#4ade80">${n}</span></div>`;
+        });
 
-// ===== OCR =====
-const { data:{ text } } = await Tesseract.recognize(
-    canvas,
-    'eng',
-    {
-        tessedit_char_whitelist: '0123456789.,',
-        tessedit_pageseg_mode: 6   // 🔥 一整塊文字
+        // 垂直格式複製，方便 Transpose
+        const copyVal = nums.join('\n');
+        container.innerHTML = listHtml + `<button class="btn" onclick="doCopy(\`${copyVal}\`)">複製此日數據 (垂直)</button>`;
+        resultsDiv.appendChild(container);
     }
-);
 
-console.log(text);
-
-// ===== 抽數 =====
-let nums = text.match(/\d{5,}\.?\d*/g) || [];
-
-if(nums.length === 0){
-    document.getElementById("status").innerText="❌ No numbers detected";
-    return;
-}
-
-// ===== 重組 =====
-let rows = [];
-for(let i=0;i<nums.length;i+=11){
-    let r = nums.slice(i,i+11);
-    if(r.length===11){
-        rows.push(r.join(' '));
+    function doCopy(val) {
+        const el = document.createElement('textarea');
+        el.value = val;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        alert("已垂直複製！\n返 Excel 揀 TX2 -> Paste Special -> Transpose");
     }
-}
-
-document.getElementById("result").value = rows.join('\n');
-
-document.getElementById("status").innerText =
-"✅ "+rows.length+" rows / "+nums.length+" numbers";
-
-}
-
-// copy
-function copyTSV(){
-let t = document.getElementById("result").value.trim();
-if(!t){ alert("No data"); return; }
-
-let out = t.split('\n').map(r =>
-r.replace(/,/g,'').split(/\s+/).join('\t')
-).join('\n');
-
-navigator.clipboard.writeText(out);
-alert("Copied");
-}
-
 </script>
-
 </body>
 </html>
