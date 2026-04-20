@@ -3,11 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meter OCR Mobile</title>
+<title>Meter OCR Pro</title>
+
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
 <style>
 body{
-    font-family:Arial;
+    font-family: Arial;
     padding:15px;
     max-width:600px;
     margin:auto;
@@ -27,61 +29,149 @@ textarea{
     margin:10px 0;
     font-weight:bold;
 }
+.error{
+    color:red;
+}
+.good{
+    color:green;
+}
 </style>
 </head>
 <body>
 
-<h2>📱 Meter OCR Mobile</h2>
+<h2>📱 Meter OCR Pro</h2>
 
 <input type="file" accept="image/*" capture="environment" id="imageInput">
 
 <div id="status">Waiting for image...</div>
 
-<button onclick="runOCR()">Run OCR</button>
+<button onclick="runOCR()">🚀 Run OCR</button>
 
+<h3>Result (space format)</h3>
 <textarea id="result"></textarea>
 
-<button onclick="copyResult()">Copy Data</button>
+<button onclick="copyTSV()">📋 Copy for Excel</button>
 
 <script>
-let imageFile=null;
+let imageFile = null;
 
 document.getElementById('imageInput').addEventListener('change', function(e){
     imageFile = e.target.files[0];
 });
 
+// 🔥 主功能
 async function runOCR(){
+
     if(!imageFile){
         alert("Please select image");
         return;
     }
 
-    document.getElementById("status").innerText="Processing OCR...";
+    document.getElementById("status").innerText = "⏳ Processing...";
 
-    const { data:{ text } } = await Tesseract.recognize(imageFile,'eng');
+    // ===== 1️⃣ 載入圖片 =====
+    const img = new Image();
+    img.src = URL.createObjectURL(imageFile);
+    await new Promise(r => img.onload = r);
+
+    // ===== 2️⃣ 裁切（中間區域）=====
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const cropTop = img.height * 0.35;
+    const cropHeight = img.height * 0.4;
+
+    canvas.width = img.width;
+    canvas.height = cropHeight;
+
+    ctx.drawImage(
+        img,
+        0, cropTop,
+        img.width, cropHeight,
+        0, 0,
+        img.width, cropHeight
+    );
+
+    // ===== 3️⃣ OCR =====
+    const { data:{ text } } = await Tesseract.recognize(
+        canvas,
+        'eng',
+        {
+            tessedit_char_whitelist: '0123456789.,'
+        }
+    );
 
     let lines = text.split('\n');
-    let output=[];
+    let output = [];
+    let errors = [];
 
-    lines.forEach(line=>{
-        // match large numbers only
-        let nums = line.match(/[\d,]+\.\d{2}|[\d,]+/g);
+    // ===== 4️⃣ 數據處理 =====
+    lines.forEach((line, index)=>{
 
-        if(nums && nums.length >= 5){
-            let clean = nums.map(n=>n.replace(/,/g,''));
-            output.push(clean.join(' '));
+        let nums = line.match(/\d{6,}\.?\d*/g);
+
+        if(nums){
+
+            // 修復斷裂數字
+            let fixed = [];
+
+            for (let i = 0; i < nums.length; i++) {
+                if (i < nums.length - 1 && nums[i+1].length <= 3) {
+                    fixed.push(nums[i] + nums[i+1]);
+                    i++;
+                } else {
+                    fixed.push(nums[i]);
+                }
+            }
+
+            // 過濾有效行
+            if(fixed.length >= 8){
+
+                // 檢查是否11欄
+                if(fixed.length !== 11){
+                    errors.push("Row " + (index+1) + " ⚠ " + fixed.length + " cols");
+                }
+
+                output.push(fixed.join(' '));
+            }
         }
     });
 
     document.getElementById("result").value = output.join('\n');
-    document.getElementById("status").innerText="OCR complete";
+
+    // ===== 5️⃣ 狀態 =====
+    if(errors.length > 0){
+        document.getElementById("status").innerHTML =
+            "⚠ Completed with warnings:<br>" + errors.join("<br>");
+    } else {
+        document.getElementById("status").innerText = "✅ Perfect (11 columns each)";
+    }
 }
 
-function copyResult(){
-    let txt=document.getElementById("result");
-    txt.select();
-    document.execCommand("copy");
-    alert("Copied");
+// ===== 6️⃣ Copy TSV（Excel專用）=====
+function copyTSV(){
+
+    let text = document.getElementById("result").value.trim();
+
+    if(!text){
+        alert("No data");
+        return;
+    }
+
+    let lines = text.split('\n');
+    let tsv = [];
+
+    lines.forEach(line=>{
+        let clean = line.replace(/,/g,'');
+        let cols = clean.split(/\s+/);
+        tsv.push(cols.join('\t'));
+    });
+
+    let final = tsv.join('\n');
+
+    navigator.clipboard.writeText(final);
+
+    alert("✅ Copied for Excel!");
 }
 </script>
 
