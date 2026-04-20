@@ -8,40 +8,22 @@
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
-body {
-    font-family: Arial;
-    padding: 15px;
-    max-width: 600px;
-    margin: auto;
-}
-button {
-    width: 100%;
-    padding: 14px;
-    margin: 8px 0;
-    font-size: 18px;
-}
-textarea {
-    width: 100%;
-    height: 180px;
-    font-size: 16px;
-}
-#status {
-    margin: 10px 0;
-    font-weight: bold;
-}
+body { font-family: Arial; padding: 15px; max-width: 600px; margin: auto; }
+button { width: 100%; padding: 14px; margin: 8px 0; font-size: 18px; }
+textarea { width: 100%; height: 180px; font-size: 16px; }
+#status { margin: 10px 0; font-weight: bold; }
 </style>
 </head>
 <body>
 
-<h2>📱 Meter OCR v1</h2>
+<h2>📱 Meter OCR v2 (Enhanced)</h2>
 
 <input type="file" accept="image/*" capture="environment" id="imageInput">
-
 <div id="status">Waiting for image...</div>
 
 <button onclick="runOCR()">🚀 Run OCR</button>
 
-<h3>Result (space format)</h3>
+<h3>Result</h3>
 <textarea id="result"></textarea>
 
 <button onclick="copyTSV()">📋 Copy for Excel</button>
@@ -50,43 +32,53 @@ textarea {
 
 let imageFile = null;
 
-document.getElementById('imageInput').addEventListener('change', function(e){
+document.getElementById('imageInput').addEventListener('change', e => {
     imageFile = e.target.files[0];
 });
 
 async function runOCR(){
 
     if(!imageFile){
-        alert("Please select image");
+        alert("Select image first");
         return;
     }
 
     document.getElementById("status").innerText = "⏳ Processing...";
 
-    // ===== 1️⃣ 載入圖片 =====
     const img = new Image();
     img.src = URL.createObjectURL(imageFile);
-    await new Promise(resolve => img.onload = resolve);
+    await new Promise(r => img.onload = r);
 
-    // ===== 2️⃣ 裁切（放寬範圍，避免miss）=====
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
-    const cropTop = img.height * 0.25;
-    const cropHeight = img.height * 0.6;
+    // 🔥 放寬裁切
+    const cropTop = img.height * 0.2;
+    const cropHeight = img.height * 0.7;
 
     canvas.width = img.width;
     canvas.height = cropHeight;
 
-    ctx.drawImage(
-        img,
-        0, cropTop,
-        img.width, cropHeight,
-        0, 0,
-        img.width, cropHeight
-    );
+    ctx.drawImage(img, 0, cropTop, img.width, cropHeight, 0, 0, img.width, cropHeight);
 
-    // ===== 3️⃣ OCR（限制字符）=====
+    // 🔥 影像強化（關鍵）
+    let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let data = imageData.data;
+
+    for(let i = 0; i < data.length; i += 4){
+        let gray = (data[i] + data[i+1] + data[i+2]) / 3;
+
+        // threshold（調高對比）
+        let value = gray > 150 ? 255 : 0;
+
+        data[i] = value;
+        data[i+1] = value;
+        data[i+2] = value;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+
+    // 🔥 OCR
     const { data: { text } } = await Tesseract.recognize(
         canvas,
         'eng',
@@ -95,65 +87,46 @@ async function runOCR(){
         }
     );
 
-    // ===== 4️⃣ 全文抽數（避免分行問題）=====
-    let nums = text.match(/\d{6,}\.?\d*/g) || [];
+    console.log("RAW OCR:", text);
 
-    // ===== 5️⃣ 修復斷裂數字 =====
-    let fixed = [];
+    // 🔥 抽數
+    let nums = text.match(/\d{5,}\.?\d*/g) || [];
 
-    for (let i = 0; i < nums.length; i++) {
-        if (i < nums.length - 1 && nums[i+1].length <= 3) {
-            fixed.push(nums[i] + nums[i+1]);
-            i++;
-        } else {
-            fixed.push(nums[i]);
-        }
+    if(nums.length === 0){
+        document.getElementById("status").innerText = "❌ OCR failed (no numbers)";
+        return;
     }
 
-    // ===== 6️⃣ 每11個數一行 =====
+    // 🔥 重組11欄
     let rows = [];
-
-    for (let i = 0; i < fixed.length; i += 11) {
-        let row = fixed.slice(i, i + 11);
-        if (row.length === 11) {
+    for(let i = 0; i < nums.length; i += 11){
+        let row = nums.slice(i, i + 11);
+        if(row.length === 11){
             rows.push(row.join(' '));
         }
     }
 
     document.getElementById("result").value = rows.join('\n');
 
-    // ===== 7️⃣ 正確狀態顯示 =====
-    if (rows.length === 0) {
-        document.getElementById("status").innerText = "❌ No valid data detected";
-    } else {
-        document.getElementById("status").innerText = "✅ " + rows.length + " row(s) detected";
-    }
+    document.getElementById("status").innerText =
+        "✅ " + rows.length + " row(s) detected (" + nums.length + " numbers)";
 }
 
-// ===== 8️⃣ Copy TSV（Excel專用）=====
+// copy
 function copyTSV(){
-
     let text = document.getElementById("result").value.trim();
-
     if(!text){
-        alert("No data to copy");
+        alert("No data");
         return;
     }
 
     let lines = text.split('\n');
-    let tsv = [];
+    let tsv = lines.map(line =>
+        line.replace(/,/g,'').split(/\s+/).join('\t')
+    );
 
-    lines.forEach(line=>{
-        let clean = line.replace(/,/g,'');
-        let cols = clean.split(/\s+/);
-        tsv.push(cols.join('\t'));
-    });
-
-    let final = tsv.join('\n');
-
-    navigator.clipboard.writeText(final);
-
-    alert("✅ Copied for Excel!");
+    navigator.clipboard.writeText(tsv.join('\n'));
+    alert("Copied");
 }
 
 </script>
