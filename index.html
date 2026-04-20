@@ -8,38 +8,32 @@
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
-body{
+body {
     font-family: Arial;
-    padding:15px;
-    max-width:600px;
-    margin:auto;
+    padding: 15px;
+    max-width: 600px;
+    margin: auto;
 }
-button{
-    width:100%;
-    padding:14px;
-    margin:8px 0;
-    font-size:18px;
+button {
+    width: 100%;
+    padding: 14px;
+    margin: 8px 0;
+    font-size: 18px;
 }
-textarea{
-    width:100%;
-    height:180px;
-    font-size:16px;
+textarea {
+    width: 100%;
+    height: 180px;
+    font-size: 16px;
 }
-#status{
-    margin:10px 0;
-    font-weight:bold;
-}
-.error{
-    color:red;
-}
-.good{
-    color:green;
+#status {
+    margin: 10px 0;
+    font-weight: bold;
 }
 </style>
 </head>
 <body>
 
-<h2>📱 Meter OCR Pro</h2>
+<h2>📱 Meter OCR v1</h2>
 
 <input type="file" accept="image/*" capture="environment" id="imageInput">
 
@@ -53,13 +47,13 @@ textarea{
 <button onclick="copyTSV()">📋 Copy for Excel</button>
 
 <script>
+
 let imageFile = null;
 
 document.getElementById('imageInput').addEventListener('change', function(e){
     imageFile = e.target.files[0];
 });
 
-// 🔥 主功能
 async function runOCR(){
 
     if(!imageFile){
@@ -72,14 +66,14 @@ async function runOCR(){
     // ===== 1️⃣ 載入圖片 =====
     const img = new Image();
     img.src = URL.createObjectURL(imageFile);
-    await new Promise(r => img.onload = r);
+    await new Promise(resolve => img.onload = resolve);
 
-    // ===== 2️⃣ 裁切（中間區域）=====
+    // ===== 2️⃣ 裁切（放寬範圍，避免miss）=====
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
-    const cropTop = img.height * 0.35;
-    const cropHeight = img.height * 0.4;
+    const cropTop = img.height * 0.25;
+    const cropHeight = img.height * 0.6;
 
     canvas.width = img.width;
     canvas.height = cropHeight;
@@ -92,8 +86,8 @@ async function runOCR(){
         img.width, cropHeight
     );
 
-    // ===== 3️⃣ OCR =====
-    const { data:{ text } } = await Tesseract.recognize(
+    // ===== 3️⃣ OCR（限制字符）=====
+    const { data: { text } } = await Tesseract.recognize(
         canvas,
         'eng',
         {
@@ -101,60 +95,48 @@ async function runOCR(){
         }
     );
 
-    let lines = text.split('\n');
-    let output = [];
-    let errors = [];
+    // ===== 4️⃣ 全文抽數（避免分行問題）=====
+    let nums = text.match(/\d{6,}\.?\d*/g) || [];
 
-    // ===== 4️⃣ 數據處理 =====
-    lines.forEach((line, index)=>{
+    // ===== 5️⃣ 修復斷裂數字 =====
+    let fixed = [];
 
-        let nums = line.match(/\d{6,}\.?\d*/g);
-
-        if(nums){
-
-            // 修復斷裂數字
-            let fixed = [];
-
-            for (let i = 0; i < nums.length; i++) {
-                if (i < nums.length - 1 && nums[i+1].length <= 3) {
-                    fixed.push(nums[i] + nums[i+1]);
-                    i++;
-                } else {
-                    fixed.push(nums[i]);
-                }
-            }
-
-            // 過濾有效行
-            if(fixed.length >= 8){
-
-                // 檢查是否11欄
-                if(fixed.length !== 11){
-                    errors.push("Row " + (index+1) + " ⚠ " + fixed.length + " cols");
-                }
-
-                output.push(fixed.join(' '));
-            }
+    for (let i = 0; i < nums.length; i++) {
+        if (i < nums.length - 1 && nums[i+1].length <= 3) {
+            fixed.push(nums[i] + nums[i+1]);
+            i++;
+        } else {
+            fixed.push(nums[i]);
         }
-    });
+    }
 
-    document.getElementById("result").value = output.join('\n');
+    // ===== 6️⃣ 每11個數一行 =====
+    let rows = [];
 
-    // ===== 5️⃣ 狀態 =====
-    if(errors.length > 0){
-        document.getElementById("status").innerHTML =
-            "⚠ Completed with warnings:<br>" + errors.join("<br>");
+    for (let i = 0; i < fixed.length; i += 11) {
+        let row = fixed.slice(i, i + 11);
+        if (row.length === 11) {
+            rows.push(row.join(' '));
+        }
+    }
+
+    document.getElementById("result").value = rows.join('\n');
+
+    // ===== 7️⃣ 正確狀態顯示 =====
+    if (rows.length === 0) {
+        document.getElementById("status").innerText = "❌ No valid data detected";
     } else {
-        document.getElementById("status").innerText = "✅ Perfect (11 columns each)";
+        document.getElementById("status").innerText = "✅ " + rows.length + " row(s) detected";
     }
 }
 
-// ===== 6️⃣ Copy TSV（Excel專用）=====
+// ===== 8️⃣ Copy TSV（Excel專用）=====
 function copyTSV(){
 
     let text = document.getElementById("result").value.trim();
 
     if(!text){
-        alert("No data");
+        alert("No data to copy");
         return;
     }
 
@@ -173,6 +155,7 @@ function copyTSV(){
 
     alert("✅ Copied for Excel!");
 }
+
 </script>
 
 </body>
