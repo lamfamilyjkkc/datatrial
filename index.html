@@ -1,132 +1,135 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meter OCR Pro</title>
-
+<title>Meter OCR Pro v3</title>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
-body { font-family: Arial; padding: 15px; max-width: 600px; margin: auto; }
-button { width: 100%; padding: 14px; margin: 8px 0; font-size: 18px; }
-textarea { width: 100%; height: 180px; font-size: 16px; }
-#status { margin: 10px 0; font-weight: bold; }
+body { font-family: Arial; padding:15px; max-width:600px; margin:auto;}
+button { width:100%; padding:14px; margin:8px 0; font-size:18px;}
+textarea { width:100%; height:180px; font-size:16px;}
 </style>
 </head>
+
 <body>
 
-<h2>📱 Meter OCR v2 (Enhanced)</h2>
+<h2>📱 Meter OCR Pro v2</h2>
 
 <input type="file" accept="image/*" capture="environment" id="imageInput">
-<div id="status">Waiting for image...</div>
+<div id="status">Waiting...</div>
 
 <button onclick="runOCR()">🚀 Run OCR</button>
 
-<h3>Result</h3>
 <textarea id="result"></textarea>
 
-<button onclick="copyTSV()">📋 Copy for Excel</button>
+<button onclick="copyTSV()">📋 Copy</button>
 
 <script>
 
 let imageFile = null;
-
-document.getElementById('imageInput').addEventListener('change', e => {
-    imageFile = e.target.files[0];
-});
+document.getElementById('imageInput').onchange = e => imageFile = e.target.files[0];
 
 async function runOCR(){
 
-    if(!imageFile){
-        alert("Select image first");
-        return;
+if(!imageFile){ alert("Select image"); return; }
+
+document.getElementById("status").innerText="Processing...";
+
+const img = new Image();
+img.src = URL.createObjectURL(imageFile);
+await new Promise(r=>img.onload=r);
+
+// ===== CANVAS =====
+const canvas = document.createElement("canvas");
+const ctx = canvas.getContext("2d");
+
+// 🔥 放大 2x（關鍵）
+const scale = 2;
+
+canvas.width = img.width * scale;
+canvas.height = img.height * 0.6 * scale;
+
+// 🔥 裁切
+const cropTop = img.height * 0.2;
+
+ctx.drawImage(
+    img,
+    0, cropTop,
+    img.width, img.height * 0.6,
+    0, 0,
+    canvas.width, canvas.height
+);
+
+// ===== 影像強化 =====
+let imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+let d = imgData.data;
+
+for(let i=0;i<d.length;i+=4){
+
+    // 灰階
+    let gray = (d[i]+d[i+1]+d[i+2])/3;
+
+    // 🔥 強對比
+    let v = gray > 140 ? 255 : 0;
+
+    // 🔥 銳化（簡單版）
+    if(v > 200){
+        d[i]=255; d[i+1]=255; d[i+2]=255;
+    } else {
+        d[i]=0; d[i+1]=0; d[i+2]=0;
     }
+}
 
-    document.getElementById("status").innerText = "⏳ Processing...";
+ctx.putImageData(imgData,0,0);
 
-    const img = new Image();
-    img.src = URL.createObjectURL(imageFile);
-    await new Promise(r => img.onload = r);
-
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-
-    // 🔥 放寬裁切
-    const cropTop = img.height * 0.2;
-    const cropHeight = img.height * 0.7;
-
-    canvas.width = img.width;
-    canvas.height = cropHeight;
-
-    ctx.drawImage(img, 0, cropTop, img.width, cropHeight, 0, 0, img.width, cropHeight);
-
-    // 🔥 影像強化（關鍵）
-    let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let data = imageData.data;
-
-    for(let i = 0; i < data.length; i += 4){
-        let gray = (data[i] + data[i+1] + data[i+2]) / 3;
-
-        // threshold（調高對比）
-        let value = gray > 150 ? 255 : 0;
-
-        data[i] = value;
-        data[i+1] = value;
-        data[i+2] = value;
+// ===== OCR =====
+const { data:{ text } } = await Tesseract.recognize(
+    canvas,
+    'eng',
+    {
+        tessedit_char_whitelist: '0123456789.,',
+        tessedit_pageseg_mode: 6   // 🔥 一整塊文字
     }
+);
 
-    ctx.putImageData(imageData, 0, 0);
+console.log(text);
 
-    // 🔥 OCR
-    const { data: { text } } = await Tesseract.recognize(
-        canvas,
-        'eng',
-        {
-            tessedit_char_whitelist: '0123456789.,'
-        }
-    );
+// ===== 抽數 =====
+let nums = text.match(/\d{5,}\.?\d*/g) || [];
 
-    console.log("RAW OCR:", text);
+if(nums.length === 0){
+    document.getElementById("status").innerText="❌ No numbers detected";
+    return;
+}
 
-    // 🔥 抽數
-    let nums = text.match(/\d{5,}\.?\d*/g) || [];
-
-    if(nums.length === 0){
-        document.getElementById("status").innerText = "❌ OCR failed (no numbers)";
-        return;
+// ===== 重組 =====
+let rows = [];
+for(let i=0;i<nums.length;i+=11){
+    let r = nums.slice(i,i+11);
+    if(r.length===11){
+        rows.push(r.join(' '));
     }
+}
 
-    // 🔥 重組11欄
-    let rows = [];
-    for(let i = 0; i < nums.length; i += 11){
-        let row = nums.slice(i, i + 11);
-        if(row.length === 11){
-            rows.push(row.join(' '));
-        }
-    }
+document.getElementById("result").value = rows.join('\n');
 
-    document.getElementById("result").value = rows.join('\n');
+document.getElementById("status").innerText =
+"✅ "+rows.length+" rows / "+nums.length+" numbers";
 
-    document.getElementById("status").innerText =
-        "✅ " + rows.length + " row(s) detected (" + nums.length + " numbers)";
 }
 
 // copy
 function copyTSV(){
-    let text = document.getElementById("result").value.trim();
-    if(!text){
-        alert("No data");
-        return;
-    }
+let t = document.getElementById("result").value.trim();
+if(!t){ alert("No data"); return; }
 
-    let lines = text.split('\n');
-    let tsv = lines.map(line =>
-        line.replace(/,/g,'').split(/\s+/).join('\t')
-    );
+let out = t.split('\n').map(r =>
+r.replace(/,/g,'').split(/\s+/).join('\t')
+).join('\n');
 
-    navigator.clipboard.writeText(tsv.join('\n'));
-    alert("Copied");
+navigator.clipboard.writeText(out);
+alert("Copied");
 }
 
 </script>
